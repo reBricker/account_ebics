@@ -2,7 +2,8 @@
 # License LGPL-3 or later (https://www.gnu.org/licenses/lgpl).
 
 {
-    "name": "Upload Batch Payment via EBICS",
+    "name": "EBICS - Batch Payments (Odoo Enterprise)",
+    "summary": "Send an Odoo Enterprise batch payment to the bank over EBICS",
     "version": "19.0.1.2.0",
     "license": "LGPL-3",
     "author": "Noviat",
