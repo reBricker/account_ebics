@@ -1,0 +1,90 @@
+# Copyright 2015 Noviat.
+# License LGPL-3 or later (https://www.gnu.org/licenses/lgpl).
+
+from odoo import api, fields, models
+from odoo.exceptions import UserError
+
+
+class AccountPaymentOrder(models.Model):
+    _inherit = "account.payment.order"
+
+    hide_ebics_upload = fields.Boolean(
+        compute="_compute_hide_ebics_upload", default=True
+    )
+
+    @api.depends("journal_id.ebics_config_id", "state")
+    def _compute_hide_ebics_upload(self):
+        for rec in self:
+            rec.hide_ebics_upload = (
+                not rec.journal_id.ebics_config_id or rec.state != "generated"
+            )
+
+    def ebics_upload(self):
+        self.ensure_one()
+        ctx = self.env.context.copy()
+        ebics_format_id = self.payment_mode_id.ebics_format_id
+        if not ebics_format_id:
+            raise UserError(
+                self.env._("Missing EBICS File Format setting on your Payment Mode.")
+            )
+        ctx.update(
+            {
+                "active_model": self._name,
+                "default_format_id": ebics_format_id.id,
+            }
+        )
+        attach = self.env["ir.attachment"].search(
+            [("res_model", "=", self._name), ("res_id", "=", self.id)]
+        )
+        if not attach:
+            raise UserError(
+                self.env._(
+                    "This payment order doesn't contains attachments."
+                    "\nPlease generate first the Payment Order file."
+                )
+            )
+        elif len(attach) > 1:
+            raise UserError(
+                self.env._(
+                    "This payment order contains multiple attachments."
+                    "\nPlease remove the obsolete attachments or upload "
+                    "the payment order file via the "
+                    "EBICS Processing > EBICS Upload menu"
+                )
+            )
+        else:
+            origin = self.env._("Payment Order") + ": " + self.name
+            if not self.journal_id.ebics_config_id:
+                raise UserError(
+                    self.env._(
+                        "No active EBICS configuration available for the selected bank."
+                    )
+                )
+            ctx.update(
+                {
+                    "default_ebics_config_id": self.journal_id.ebics_config_id.id,
+                    "default_upload_data": attach.datas,
+                    "default_upload_fname": attach.name,
+                    "origin": origin,
+                }
+            )
+            ebics_xfer = (
+                self.env["ebics.xfer"]
+                .with_company(self.company_id)
+                .with_context(**ctx)
+                .create({})
+            )
+            ebics_xfer._onchange_ebics_config_id()
+            ebics_xfer._onchange_upload_data()
+            view = self.env.ref("account_ebics.ebics_xfer_view_form_upload")
+            act = {
+                "name": self.env._("EBICS Upload"),
+                "view_mode": "form",
+                "res_model": "ebics.xfer",
+                "view_id": view.id,
+                "res_id": ebics_xfer.id,
+                "type": "ir.actions.act_window",
+                "target": "new",
+                "context": ctx,
+            }
+            return act
