@@ -4,7 +4,7 @@
 {
     "name": "account_ebics on Odoo Enterprise",
     "summary": "Deploy account_ebics module on Odoo Enterprise",
-    "version": "19.0.1.0.0",
+    "version": "20.0.1.0.0",
     "author": "Noviat",
     "website": "https://www.noviat.com/",
     "category": "Hidden",

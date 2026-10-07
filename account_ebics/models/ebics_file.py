@@ -12,7 +12,7 @@ from lxml import etree
 from odoo import api, fields, models
 from odoo.exceptions import UserError
 
-from odoo.addons.base.models.res_bank import sanitize_account_number
+from odoo.addons.base.models.res_partner_bank import sanitize_account_number
 
 _logger = logging.getLogger(__name__)
 
@@ -524,7 +524,7 @@ class EbicsFile(models.Model):
             .create(
                 {
                     "name": self.name,
-                    "datas": st_data["data"],
+                    "raw": base64.b64decode(st_data["data"]),
                     "store_fname": self.name,
                 }
             )
@@ -537,15 +537,22 @@ class EbicsFile(models.Model):
         act = journal._import_bank_statement(attachment)
         for entry in act["domain"]:
             if (
-                isinstance(entry, tuple)
+                isinstance(entry, (tuple, list))
                 and entry[0] == "statement_id"
                 and entry[1] == "in"
             ):
                 res["statement_ids"].extend(entry[2])
                 break
-        notifications = act["context"]["notifications"]
+        notifications = act["context"].get("notifications")
         if notifications:
-            res["notifications"].append(act["context"]["notifications"])
+            if isinstance(notifications, dict):
+                for fname, messages in notifications.items():
+                    for message in messages:
+                        res["notifications"].append(
+                            {"type": "warning", "message": f"{fname}: {message}"}
+                        )
+            else:
+                res["notifications"].append(notifications)
 
     def _unlink_camt053(self):
         """

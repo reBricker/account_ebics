@@ -3,7 +3,7 @@
 
 {
     "name": "EBICS banking protocol",
-    "version": "19.0.1.2.0",
+    "version": "20.0.1.0.0",
     "license": "LGPL-3",
     "author": "Noviat",
     "website": "https://www.noviat.com/",
@@ -11,7 +11,7 @@
     "depends": ["account"],
     "data": [
         "security/ebics_security.xml",
-        "security/ir.model.access.csv",
+        "security/ir.access.csv",
         "data/ebics_file_format.xml",
         "views/ebics_config_views.xml",
         "views/ebics_file_views.xml",
