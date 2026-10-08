@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+    <record id="ebics_userid_view_form_keystore" model="ir.ui.view">
+        <field name="name">ebics.userid.form.keystore</field>
+        <field name="model">ebics.userid</field>
+        <field name="inherit_id" ref="account_ebics.ebics_userid_view_form" />
+        <field name="arch" type="xml">
+            <group name="files" position="before">
+                <group name="keystore">
+                    <field name="ebics_keys_stored" />
+                </group>
+            </group>
+        </field>
+    </record>
+</odoo>
