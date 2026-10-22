@@ -2,9 +2,13 @@
 # License LGPL-3 or later (https://www.gnu.org/licenses/lgpl).
 
 import os
+import re
 
 from odoo import api, fields, models
+from odoo.exceptions import UserError
 from odoo.tools.binary import BinaryBytes
+
+PASSPHRASE_ENV_PREFIX = "EBICS_PASSPHRASE_"
 
 
 class EbicsUserID(models.Model):
@@ -30,6 +34,26 @@ class EbicsUserID(models.Model):
     ebics_keys_stored = fields.Boolean(
         compute="_compute_ebics_keys_stored", string="Keys in database"
     )
+    # The passphrase is no longer a plain stored field: the value entered in the
+    # form lives in ebics_passphrase_db, and a passphrase provided through the
+    # environment (EBICS_PASSPHRASE_<USERID>) is only handed out on the server
+    # side, inside the EBICS operations. It never reaches the database, its
+    # backups or the web client.
+    ebics_passphrase = fields.Char(
+        compute="_compute_ebics_passphrase",
+        inverse="_inverse_ebics_passphrase",
+        store=False,
+    )
+    ebics_passphrase_db = fields.Char(
+        string="EBICS Passphrase (database)",
+        copy=False,
+    )
+    ebics_passphrase_env = fields.Boolean(
+        compute="_compute_ebics_passphrase_env",
+        string="Passphrase from environment",
+        help="The passphrase is read from the environment variable "
+        "EBICS_PASSPHRASE_<USERID> of the Odoo server and is not stored.",
+    )
 
     @api.depends("ebics_keys_data")
     def _compute_ebics_keys_stored(self):
@@ -42,6 +66,53 @@ class EbicsUserID(models.Model):
         # file is restored before any code looks for it on disk.
         super()._compute_ebics_keys_fn()
         self._keystore_restore()
+
+    def _ebics_passphrase_env_name(self):
+        self.ensure_one()
+        return PASSPHRASE_ENV_PREFIX + re.sub(r"[^A-Z0-9]", "_", (self.name or "").upper())
+
+    def _ebics_env_passphrase(self):
+        self.ensure_one()
+        if not self.name:
+            return False
+        return os.environ.get(self._ebics_passphrase_env_name()) or False
+
+    @api.depends("name")
+    def _compute_ebics_passphrase_env(self):
+        for rec in self:
+            rec.ebics_passphrase_env = bool(rec._ebics_env_passphrase())
+
+    @api.depends("name", "ebics_passphrase_db")
+    @api.depends_context("ebics_env_passphrase")
+    def _compute_ebics_passphrase(self):
+        use_env = self.env.context.get("ebics_env_passphrase")
+        for rec in self:
+            env_passphrase = use_env and rec._ebics_env_passphrase()
+            rec.ebics_passphrase = env_passphrase or rec.ebics_passphrase_db
+
+    def _inverse_ebics_passphrase(self):
+        for rec in self:
+            if rec.ebics_passphrase and rec._ebics_env_passphrase():
+                raise UserError(
+                    self.env._(
+                        "The passphrase of EBICS UserID %(user)s is provided by the "
+                        "environment variable %(var)s and cannot be set here.",
+                        user=rec.name,
+                        var=rec._ebics_passphrase_env_name(),
+                    )
+                )
+            rec.ebics_passphrase_db = rec.ebics_passphrase
+
+    @api.depends("state", "ebics_passphrase", "ebics_keys_found", "ebics_passphrase_env")
+    def _compute_ebics_passphrase_view_modifiers(self):
+        super()._compute_ebics_passphrase_view_modifiers()
+        for rec in self.filtered("ebics_passphrase_env"):
+            rec.ebics_passphrase_required = False
+            rec.ebics_passphrase_invisible = True
+            rec.ebics_passphrase_store_readonly = True
+
+    def _with_env_passphrase(self):
+        return self.with_context(ebics_env_passphrase=True)
 
     def _keystore_restore(self):
         """Write the database copy to disk when the key file is missing."""
@@ -70,24 +141,24 @@ class EbicsUserID(models.Model):
 
     def ebics_init_1(self):
         try:
-            return super().ebics_init_1()
+            return super(EbicsUserID, self._with_env_passphrase()).ebics_init_1()
         finally:
             self._keystore_save()
 
     def ebics_init_2(self):
         try:
-            return super().ebics_init_2()
+            return super(EbicsUserID, self._with_env_passphrase()).ebics_init_2()
         finally:
             self._keystore_save()
 
     def ebics_init_3(self):
         try:
-            return super().ebics_init_3()
+            return super(EbicsUserID, self._with_env_passphrase()).ebics_init_3()
         finally:
             self._keystore_save()
 
     def ebics_init_4(self):
         try:
-            return super().ebics_init_4()
+            return super(EbicsUserID, self._with_env_passphrase()).ebics_init_4()
         finally:
             self._keystore_save()

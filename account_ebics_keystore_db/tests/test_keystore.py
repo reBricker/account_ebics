@@ -3,7 +3,9 @@
 
 import os
 import tempfile
+from unittest.mock import patch
 
+from odoo.exceptions import UserError
 from odoo.tests import TransactionCase, tagged
 
 
@@ -68,3 +70,38 @@ class TestKeystore(TransactionCase):
         write_date = self.userid.write_date
         self.userid._keystore_save()
         self.assertEqual(self.userid.write_date, write_date)
+
+    def test_keys_dir_created(self):
+        # Fresh container: the keys directory does not exist yet.
+        missing = os.path.join(self.keys_dir, "fresh", self.env.cr.dbname)
+        self.config.ebics_keys = missing
+        self.assertFalse(os.path.isdir(missing))
+        self.config._check_ebics_keys()
+        self.assertTrue(os.path.isdir(missing))
+        self.assertEqual(oct(os.stat(missing).st_mode & 0o777), oct(0o700))
+
+    def test_passphrase_from_environment(self):
+        var = "EBICS_PASSPHRASE_USER1"
+        self.assertEqual(self.userid._ebics_passphrase_env_name(), var)
+        with patch.dict(os.environ, {var: "secret-from-env"}):
+            self.userid.invalidate_recordset()
+            self.assertTrue(self.userid.ebics_passphrase_env)
+            # Outside the EBICS operations the value is not handed out.
+            self.assertFalse(self.userid.ebics_passphrase)
+            self.assertEqual(
+                self.userid._with_env_passphrase().ebics_passphrase, "secret-from-env"
+            )
+            self.assertFalse(self.userid.ebics_passphrase_db)
+            self.assertTrue(self.userid.ebics_passphrase_invisible)
+            self.assertFalse(self.userid.ebics_passphrase_required)
+            with self.assertRaises(UserError):
+                self.userid.ebics_passphrase = "typed-in-form"
+            xfer = self.env["ebics.xfer"].new({"ebics_userid_id": self.userid.id})
+            self.assertEqual(xfer._get_passphrase(), "secret-from-env")
+
+    def test_passphrase_from_form(self):
+        self.userid.ebics_passphrase = "typed-in-form"
+        self.assertEqual(self.userid.ebics_passphrase_db, "typed-in-form")
+        self.userid.invalidate_recordset()
+        self.assertEqual(self.userid.ebics_passphrase, "typed-in-form")
+        self.assertFalse(self.userid.ebics_passphrase_env)

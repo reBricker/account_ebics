@@ -8,6 +8,7 @@
             <group name="files" position="before">
                 <group name="keystore">
                     <field name="ebics_keys_stored" />
+                    <field name="ebics_passphrase_env" />
                 </group>
             </group>
         </field>

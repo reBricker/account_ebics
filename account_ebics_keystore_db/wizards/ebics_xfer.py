@@ -10,6 +10,14 @@ class EbicsXfer(models.TransientModel):
     # Transfers normally leave the key file untouched; saving afterwards is cheap
     # and covers library versions that update the file (e.g. bank key renewals).
 
+    def _get_passphrase(self):
+        # A passphrase typed into the wizard wins; otherwise the one from the
+        # environment or the database (see ebics.userid.ebics_passphrase).
+        return (
+            self.ebics_passphrase
+            or self.ebics_userid_id._with_env_passphrase().ebics_passphrase
+        )
+
     def ebics_upload(self):
         try:
             return super().ebics_upload()

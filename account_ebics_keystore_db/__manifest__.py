@@ -3,7 +3,7 @@
 
 {
     "name": "EBICS keys stored in the database",
-    "version": "20.0.1.0.0",
+    "version": "20.0.1.0.1",
     "license": "LGPL-3",
     "author": "reBricker",
     "website": "https://github.com/reBricker/account_ebics",
