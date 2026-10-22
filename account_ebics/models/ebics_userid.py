@@ -1,7 +1,6 @@
 # Copyright 2009-2024 Noviat.
 # License LGPL-3 or later (https://www.gnu.org/licenses/lgpl).
 
-import base64
 import logging
 import os
 from sys import exc_info
@@ -10,6 +9,7 @@ from urllib.error import URLError
 
 from odoo import api, fields, models
 from odoo.exceptions import UserError
+from odoo.tools.binary import BinaryBytes
 
 _logger = logging.getLogger(__name__)
 
@@ -366,8 +366,8 @@ class EbicsUserID(models.Model):
                 # enable import of all type of certicates: A00x, X002, E002
                 if self.swift_3skey:
                     kwargs = {
-                        self.ebics_config_id.ebics_key_version: base64.decodebytes(
-                            self.swift_3skey_certificate
+                        self.ebics_config_id.ebics_key_version: (
+                            self.swift_3skey_certificate.content
                         ),
                     }
                     user.import_certificates(**kwargs)
@@ -412,11 +412,14 @@ class EbicsUserID(models.Model):
             raise UserError(error) from err
 
         # Send the public electronic signature key to the bank.
-        ebics_config_bank = self.ebics_config_id.journal_ids[0].bank_id
-        if not ebics_config_bank:
+        # Odoo 20 has no res.bank anymore: bank name, BIC and country live on
+        # the bank account (res.partner.bank) of the journal.
+        ebics_config_bank = self.ebics_config_id.journal_ids[:1].bank_account_id
+        if not ebics_config_bank.bank_name:
             raise UserError(
                 self.env._(
-                    "No bank defined for the financial journal of the EBICS Config"
+                    "No bank account with a bank name defined for the financial "
+                    "journal of the EBICS Config"
                 )
             )
         try:
@@ -470,8 +473,7 @@ class EbicsUserID(models.Model):
             self.ebics_config_id._update_order_number(OrderID)
 
         # Create an INI-letter which must be printed and sent to the bank.
-        ebics_config_bank = self.ebics_config_id.journal_ids[0].bank_id
-        cc = ebics_config_bank.country.code
+        cc = ebics_config_bank.country_code
         if cc in ["FR", "DE"]:
             lang = cc
         else:
@@ -480,9 +482,11 @@ class EbicsUserID(models.Model):
         lang = lang if lang in INI_LETTER_LANGS else "en"
         fn_date = fields.Date.today().isoformat()
         fn = "_".join([self.ebics_config_id.ebics_host, "ini_letter", fn_date]) + ".pdf"
-        letter = user.create_ini_letter(bankname=ebics_config_bank.name, lang=lang)
+        letter = user.create_ini_letter(
+            bankname=ebics_config_bank.bank_name, lang=lang
+        )
         vals = {
-            "ebics_ini_letter": base64.encodebytes(letter),
+            "ebics_ini_letter": BinaryBytes(letter),
             "ebics_ini_letter_fn": fn,
             "state": "init",
         }
@@ -553,7 +557,7 @@ class EbicsUserID(models.Model):
             + ".txt"
         )
         vals = {
-            "ebics_public_bank_keys": base64.encodebytes(public_bank_keys),
+            "ebics_public_bank_keys": BinaryBytes(public_bank_keys),
             "ebics_public_bank_keys_fn": fn,
             "state": "to_verify",
         }
